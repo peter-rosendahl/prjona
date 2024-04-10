@@ -23,96 +23,149 @@ import {
 } from 'react-native';
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { Project } from './Models/Project';
 
 export enum EStorage {
-  Text = "Text"
+  Text = "Text",
+  Counter = "Counter",
+  Limit = "Limit",
+  Project = "ProjectList"
 }
 
 const App = () => {
 
-  const [counter, setCounter] = useState(1);
-  const [limit, setLimit] = useState(4);
   const [note, setNote] = useState('');
+  const [currentProject, setCurrentProject] = useState<Project | null>(null);
+  let noteTimeout: NodeJS.Timeout;
 
   useEffect(() => {
-    console.log('getting storage');
-    getStorage(EStorage.Text)
-    .then(value => {
-      if (typeof(value) === 'string') {
-          console.log('Storage value', value);
-          setNote(value);
-        }
-      });
     
-      const backAction = () => {
-        dismissKeyboard();
-        Alert.alert("Exit Prjóna", "Want to exit Prjóna app?", [
-          {
-            text: "Cancel",
-            onPress: () => null,
-            style: "cancel"
-          },
-          { text: "YES", onPress: () => BackHandler.exitApp() }
-        ]);
-        return true;
-      };
-  
-      const backHandler = BackHandler.addEventListener(
-        "hardwareBackPress",
-        backAction
-      );
-  
-      return () => backHandler.remove();
+    const backAction = () => {
+      dismissKeyboard();
+      Alert.alert("Exit Prjóna", "Want to exit Prjóna app?", [
+        {
+          text: "Cancel",
+          onPress: () => null,
+          style: "cancel"
+        },
+        { text: "YES", onPress: () => BackHandler.exitApp() }
+      ]);
+      return true;
+    };
+
+    const backHandler = BackHandler.addEventListener(
+      "hardwareBackPress",
+      backAction
+    );
+
+    fetchProjects();
+
+    return () => backHandler.remove();
   }, []);
+
+  const fetchProjects = async() => {
+    const projectStorageString = await getStorageAsync(EStorage.Project),
+      projectList = projectStorageString != null ? JSON.parse(projectStorageString) : null;
+    console.log('projectList', typeof(projectList), projectList);
+    if (projectList != null && typeof(projectList) == 'object') {
+      setCurrentProject(projectList[0]);
+      setNote(projectList[0]?.note ?? "");
+    } else {
+      setCurrentProject(new Project("Project 1", 4, 1, ""));
+      setNote("");
+    }
+  }
 
   const subtractToLimit = () => {
     dismissKeyboard();
-    let newLimit = limit;
-    if (limit >= 2) {
+    let newLimit = currentProject?.limit ?? 4;
+    if (newLimit >= 2) {
       newLimit -= 1;
     }
-    setLimit(newLimit);
+    
+    const project: Project = {
+      name: currentProject?.name ?? "test",
+      limit: newLimit,
+      note: currentProject?.note ?? "",
+      counter: currentProject?.counter ?? 1
+    };
+    setCurrentProject(project);
   }
 
   const addToLimit = () => {
     dismissKeyboard();
-    let newLimit = limit;
+    let newLimit = currentProject?.limit ?? 4;
     newLimit += 1;
-    setLimit(newLimit);
+    
+    const project: Project = {
+      name: currentProject?.name ?? "test",
+      limit: newLimit,
+      note: currentProject?.note ?? "",
+      counter: currentProject?.counter ?? 1
+    };
+    setCurrentProject(project);
   }
 
   const addToCounter = () => {
     dismissKeyboard();
-    let newCounter = counter;
-    if (counter >= limit) {
+    let newCounter = currentProject?.counter ?? 1,
+      limit = currentProject?.limit ?? 4;
+    if (newCounter >= limit) {
       newCounter = 1;
     } else {
       newCounter += 1;
     }
-    setCounter(newCounter);
+    const project: Project = {
+      name: currentProject?.name ?? "test",
+      limit: currentProject?.limit ?? 4,
+      note: currentProject?.note ?? "",
+      counter: newCounter
+    };
+    setCurrentProject(project);
   }
 
   const subtractToCounter = () => {
     dismissKeyboard();
-    let newCounter = counter;
-    if (counter === 1) {
-      newCounter = limit;
+    let newCounter = currentProject?.counter ?? 1;
+    if (newCounter == 1) {
+      newCounter = 1;
     } else {
       newCounter -= 1;
     }
-    setCounter(newCounter);
+    const project: Project = {
+      name: currentProject?.name ?? "test",
+      limit: currentProject?.limit ?? 4,
+      note: currentProject?.note ?? "",
+      counter: newCounter
+    };
+    setCurrentProject(project);
   }
 
   const saveText = (value: string) => {
     setNote(value);
-    setStorage(EStorage.Text, value);
+    const project: Project = {
+      name: currentProject?.name ?? "test",
+      limit: currentProject?.limit ?? 4,
+      note: value,
+      counter: currentProject?.counter ?? 1
+    };
+    setCurrentProject(project);
   }
 
-  const setStorage = async (key: EStorage, value: string) => {
+  const saveCurrentProject = (project: Project, timeout: number = 0) => {
+    clearTimeout(noteTimeout);
+    setTimeout(() => {
+      const projectList: Project[] = [];
+      projectList.push(project);
+      setStorageAsync(EStorage.Project, JSON.stringify(projectList));
+    }, timeout);
+  }
+
+  const setStorageAsync = async (key: EStorage, value: string) => {
     return await AsyncStorage.setItem(key, value);
   }
 
-  const getStorage = async (key: EStorage) => {
+  const getStorageAsync = async (key: EStorage) => {
     return await AsyncStorage.getItem(key);
   }
 
@@ -120,27 +173,58 @@ const App = () => {
     Keyboard.dismiss();
   }
 
+  useEffect(() => {
+    saveCurrentProject(currentProject!, 0);
+  }, [currentProject])
+
   return (
     <SafeAreaView style={styles.wrapper}>
-        <Text style={styles.title}>Prjóna</Text>
+        <Text style={[styles.title, styles.text]}>Prjóna</Text>
         <View style={styles.settings}>
           <Text>Limit</Text>
+          
           <View style={styles.limitSection}>
-            <View style={[styles.button]} onTouchEnd={subtractToLimit}><Text style={[styles.buttonText]}>-</Text></View>
-            <Text style={styles.limit}>{limit}</Text>
-            <View style={[styles.button]} onTouchEnd={addToLimit}><Text style={[styles.buttonText]}>+</Text></View>
+            <View style={[styles.button]} onTouchEnd={subtractToLimit}>
+              <Text style={[styles.buttonText]}>-</Text>
+            </View>
+
+            <Text style={[styles.limit, styles.text]}>{currentProject?.limit}</Text>
+
+            <View style={[styles.button]} onTouchEnd={addToLimit}>
+              <Text style={[styles.buttonText]}>+</Text>
+            </View>
           </View>
+
         </View>
+
         <View style={styles.main}>
-          <TextInput style={styles.textArea} defaultValue="Add note here" placeholder="Add note here" multiline={true} value={note} numberOfLines={4} onChangeText={(value) => saveText(value)} />
+          <TextInput 
+            style={styles.textArea} 
+            defaultValue="Add note here" 
+            placeholder="Add note here" 
+            multiline={true} 
+            value={note} 
+            numberOfLines={4} 
+            onChangeText={(value) => saveText(value)} />
+
           <View style={styles.controls}>
-            <View style={[styles.button, styles.subtractControl]} onTouchEnd={subtractToCounter}><Text style={styles.buttonText}>-</Text></View>
+            <View style={[styles.button, styles.subtractControl]} onTouchEnd={subtractToCounter}>
+              <Text style={styles.buttonText}>-</Text>
+            </View>
           </View>
+
           <View style={styles.counterSection}>
-            <Text style={styles.counter}>{counter}</Text>
+            <Text style={[styles.counter, styles.text]}>
+              {currentProject?.counter}
+            </Text>
           </View>
+
           <View style={styles.controls}>
-            <View style={[styles.button, styles.addControl]} onTouchEnd={addToCounter}><Text style={styles.buttonText}>+</Text></View>
+            <View 
+              style={[styles.button, styles.addControl]} 
+              onTouchEnd={addToCounter}>
+              <Text style={styles.buttonText}>+</Text>
+            </View>
           </View>
         </View>
     </SafeAreaView>
@@ -181,6 +265,9 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     justifyContent: "center",
     alignItems: "center"
+  },
+  text: {
+    color: "#999",
   },
   limit: {
     fontSize: 21,
