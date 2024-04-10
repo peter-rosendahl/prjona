@@ -2,6 +2,28 @@
 #
 .DS_Store
 
+# Project dependencies
+google-services.json
+
+# node.js
+#
+node_modules/
+npm-debug.log
+yarn-error.log
+package-lock.json
+
+# Bundle artifact
+*.jsbundle
+
+# Android/IntelliJ
+#
+android/
+build/
+.idea
+.gradle
+local.properties
+*.iml
+
 # Xcode
 #
 build/
@@ -21,21 +43,9 @@ DerivedData
 *.ipa
 *.xcuserstate
 
-# Android/IntelliJ
-#
-android/
-build/
-.idea
-.gradle
-local.properties
-*.iml
-
-# node.js
-#
-node_modules/
-npm-debug.log
-yarn-error.log
-
+# iOS setup
+ios/
+Gemfile
 # BUCK
 buck-out/
 \.buckd/
@@ -53,8 +63,6 @@ buck-out/
 */fastlane/Preview.html
 */fastlane/screenshots
 
-# Bundle artifact
-*.jsbundle
 
 # CocoaPods
 /ios/Pods/
