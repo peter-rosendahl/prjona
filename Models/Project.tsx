@@ -1,9 +1,23 @@
-export class Project {
+export interface IProject {
     
-    public name: string;
-    public limit: number;
-    public counter: number;
-    public note: string;
+    name: string;
+    limit: number;
+    counter: number;
+    note: string;
+
+    
+}
+
+export interface ICurrentProject extends IProject {
+    isCurrent?: boolean;
+}
+
+export class CurrentProject implements ICurrentProject {
+    isCurrent?: boolean;
+    name: string;
+    limit: number;
+    counter: number;
+    note: string;
 
     /**
      * Creates a new Prjona project to store on local storage.
@@ -17,5 +31,6 @@ export class Project {
         this.limit = limit;
         this.counter = counter;
         this.note = note;
+        this.isCurrent = true;
     }
 }

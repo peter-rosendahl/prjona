@@ -15,27 +15,33 @@ import {
   StyleSheet,
   Text,
   View,
-  TextInput,
   TouchableWithoutFeedback,
   Keyboard,
   BackHandler,
   Alert,
 } from 'react-native';
 
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import { Project } from './Models/Project';
-
-export enum EStorage {
-  Text = "Text",
-  Counter = "Counter",
-  Limit = "Limit",
-  Project = "ProjectList"
-}
+import { 
+  Appbar, 
+  Dialog, 
+  Menu, 
+  Portal,
+  TextInput } from 'react-native-paper';
+import { IProject, ICurrentProject, CurrentProject } from './Models/Project';
+import Navigation from './Layout/Navigation';
+import { StorageKey, getStorageAsync, setStorageAsync } from './Services/local-storage';
+import { fetchProjectListAsync, updateProjectAsync, addProjectAsync, renameProjectAsync } from './Services/project.service';
 
 const App = () => {
 
   const [note, setNote] = useState('');
-  const [currentProject, setCurrentProject] = useState<Project | null>(null);
+  const [currentProject, setCurrentProject] = useState<ICurrentProject | null>(null);
+  const [projectList, setProjectList] = useState<ICurrentProject[]>([]);
+  const [isNavigationOpen, setIsNavigationOpen] = useState<boolean>(false);
+  const [isProjectMenuOpen, setIsProjectMenuOpen] = useState<boolean>(false);
+  const [isRenameDialogOpen, setIsRenameDialogOpen] = useState<boolean>(false);
+  const [projectRenameText, setProjectRenameText] = useState<string>("");
+
   let noteTimeout: NodeJS.Timeout;
 
   useEffect(() => {
@@ -64,58 +70,84 @@ const App = () => {
   }, []);
 
   const fetchProjects = async() => {
-    const projectStorageString = await getStorageAsync(EStorage.Project),
-      projectList = projectStorageString != null ? JSON.parse(projectStorageString) : null;
-    console.log('projectList', typeof(projectList), projectList);
-    if (projectList != null && typeof(projectList) == 'object') {
-      setCurrentProject(projectList[0]);
-      setNote(projectList[0]?.note ?? "");
+    const fetchedProjectList = await fetchProjectListAsync();
+    console.log('projectList', fetchedProjectList);
+    let parsedProjectList: ICurrentProject[];
+    if (typeof(fetchedProjectList) == 'string') {
+      console.log('projects are stringified');
+      parsedProjectList = JSON.parse(fetchedProjectList);
     } else {
-      setCurrentProject(new Project("Project 1", 4, 1, ""));
-      setNote("");
+      parsedProjectList = fetchedProjectList;
+    }
+    console.log(typeof(parsedProjectList));
+
+    if (parsedProjectList != null) {
+      console.log('App.fetch, setting project list', parsedProjectList);
+      setProjectList(parsedProjectList);
+      if (parsedProjectList.length > 0) {
+        console.log('App.fetch, projectList is more than zero', parsedProjectList.length);
+        const activeProject = parsedProjectList[0];
+        setCurrentProject(activeProject);
+        setNote(activeProject.note);
+      } else {
+        const project: ICurrentProject = new CurrentProject("Project 1", 4, 1, ""); 
+        await addProjectAsync(project);
+        setCurrentProject(project);
+        setNote(project.note); 
+      }
+    } else {
+      const project: ICurrentProject = new CurrentProject("Project 1", 4, 1, ""); 
+      await addProjectAsync(project);
+      setCurrentProject(project);
+      setNote(project.note); 
     }
   }
 
-  const subtractToLimit = () => {
+  const toggleNavigation = (isOpen: boolean) => {
+    setIsNavigationOpen(isOpen);
+  }
+
+
+  const openProjectMenu = () => {
+    setIsProjectMenuOpen(true);
+  }
+
+  const closeProjectMenu = () => {
+    setIsProjectMenuOpen(false);
+  }
+
+  const addToLimit = (count: number) => {
     dismissKeyboard();
-    let newLimit = currentProject?.limit ?? 4;
-    if (newLimit >= 2) {
-      newLimit -= 1;
+    let newLimitOrDefault = currentProject?.limit ?? 4;
+    if ((count < 0 && newLimitOrDefault > 1) || count > 0) {
+      newLimitOrDefault += count;
+    } else {
+      return;
     }
     
-    const project: Project = {
+    const project: ICurrentProject = {
       name: currentProject?.name ?? "test",
-      limit: newLimit,
+      limit: newLimitOrDefault,
       note: currentProject?.note ?? "",
       counter: currentProject?.counter ?? 1
     };
     setCurrentProject(project);
   }
 
-  const addToLimit = () => {
-    dismissKeyboard();
-    let newLimit = currentProject?.limit ?? 4;
-    newLimit += 1;
-    
-    const project: Project = {
-      name: currentProject?.name ?? "test",
-      limit: newLimit,
-      note: currentProject?.note ?? "",
-      counter: currentProject?.counter ?? 1
-    };
-    setCurrentProject(project);
-  }
-
-  const addToCounter = () => {
+  const addToCounter = (count: number) => {
     dismissKeyboard();
     let newCounter = currentProject?.counter ?? 1,
-      limit = currentProject?.limit ?? 4;
-    if (newCounter >= limit) {
-      newCounter = 1;
+    limit = currentProject?.limit ?? 4;
+    console.log('addToCounter', count, newCounter, limit);
+    if ((count < 0 && newCounter > 1) || count > 0) {
+      newCounter += count;
     } else {
-      newCounter += 1;
+      return;
     }
-    const project: Project = {
+    if (newCounter > limit) {
+      newCounter = 1;
+    }
+    const project: ICurrentProject = {
       name: currentProject?.name ?? "test",
       limit: currentProject?.limit ?? 4,
       note: currentProject?.note ?? "",
@@ -132,7 +164,7 @@ const App = () => {
     } else {
       newCounter -= 1;
     }
-    const project: Project = {
+    const project: ICurrentProject = {
       name: currentProject?.name ?? "test",
       limit: currentProject?.limit ?? 4,
       note: currentProject?.note ?? "",
@@ -143,7 +175,7 @@ const App = () => {
 
   const saveText = (value: string) => {
     setNote(value);
-    const project: Project = {
+    const project: CurrentProject = {
       name: currentProject?.name ?? "test",
       limit: currentProject?.limit ?? 4,
       note: value,
@@ -152,81 +184,140 @@ const App = () => {
     setCurrentProject(project);
   }
 
-  const saveCurrentProject = (project: Project, timeout: number = 0) => {
-    clearTimeout(noteTimeout);
-    setTimeout(() => {
-      const projectList: Project[] = [];
-      projectList.push(project);
-      setStorageAsync(EStorage.Project, JSON.stringify(projectList));
-    }, timeout);
-  }
-
-  const setStorageAsync = async (key: EStorage, value: string) => {
-    return await AsyncStorage.setItem(key, value);
-  }
-
-  const getStorageAsync = async (key: EStorage) => {
-    return await AsyncStorage.getItem(key);
-  }
+  // const saveCurrentProject = (project: ICurrentProject, timeout: number = 0) => {
+  //   clearTimeout(noteTimeout);
+  //   setTimeout(() => {
+  //     const projectList: IProject[] = [];
+  //     projectList.push(project);
+  //     setStorageAsync(StorageKey.ProjectList, JSON.stringify(projectList));
+  //   }, timeout);
+  // }
 
   const dismissKeyboard = () => {
     Keyboard.dismiss();
   }
 
+  const toggleRenameDialog = (isVisible: boolean) => {
+    setProjectRenameText(currentProject!.name);
+    setIsRenameDialogOpen(isVisible);
+  }
+
+  const executeRename = async() => {
+    const indexOfCurrentProject = projectList.indexOf(currentProject!);
+    console.log(indexOfCurrentProject);
+    const newList = await renameProjectAsync(currentProject!, projectRenameText);
+    toggleRenameDialog(false);
+    closeProjectMenu();
+    setProjectList(newList);
+    setCurrentProject(newList[indexOfCurrentProject]);
+  }
+
+  const onNewProjectCreated = (newList: ICurrentProject[]) => {
+    setProjectList(newList);
+  }
+
+  const onProjectSelected = (projectName: string) => {
+    const selectedProject = projectList.find(x => x.name == projectName);
+    if (selectedProject != null) {
+      let updatedList = projectList.map(item => {
+        return {
+          ...item,
+          isCurrent: item.name == projectName
+        }
+      });
+      setProjectList(updatedList);
+      setCurrentProject(selectedProject);
+    }
+  }
+
   useEffect(() => {
-    saveCurrentProject(currentProject!, 0);
+    // saveCurrentProject(currentProject!, 0);
+    updateProjectAsync(currentProject!).then(result => {
+      console.log("update project result", result);
+    });
   }, [currentProject])
 
   return (
     <SafeAreaView style={styles.wrapper}>
-        <Text style={[styles.title, styles.text]}>Prjóna</Text>
-        <View style={styles.settings}>
-          <Text>Limit</Text>
-          
-          <View style={styles.limitSection}>
-            <View style={[styles.button]} onTouchEnd={subtractToLimit}>
-              <Text style={[styles.buttonText]}>-</Text>
-            </View>
-
-            <Text style={[styles.limit, styles.text]}>{currentProject?.limit}</Text>
-
-            <View style={[styles.button]} onTouchEnd={addToLimit}>
-              <Text style={[styles.buttonText]}>+</Text>
-            </View>
+      <Appbar.Header elevated={true}>
+        <Appbar.Action icon="menu" onPress={() => toggleNavigation(!isNavigationOpen)} />
+        <Appbar.Content title={currentProject?.name ?? 'Prjona'} />
+        <Menu
+          visible={isProjectMenuOpen}
+          anchor={<Appbar.Action icon="dots-vertical" onPress={openProjectMenu} />}
+          onDismiss={closeProjectMenu}>
+            <Menu.Item onPress={() => toggleRenameDialog(true)} title="Rename project" />
+        </Menu>
+      </Appbar.Header>
+      {isNavigationOpen && 
+        <Navigation 
+          items={projectList} 
+          onNewProjectCreated={onNewProjectCreated} 
+          onProjectSelected={onProjectSelected}
+          />
+      }
+      {isRenameDialogOpen &&
+        <Portal>
+          <Dialog
+            visible={true}
+            onDismiss={() => toggleRenameDialog(false)}>
+              <Dialog.Title>Rename project</Dialog.Title>
+              <Dialog.Content>
+                <TextInput label="Name" value={projectRenameText} onChangeText={(value) => setProjectRenameText(value)} />
+              </Dialog.Content>
+              <Dialog.Actions>
+                  <Button title="Confirm" onPress={executeRename}></Button>
+              </Dialog.Actions>
+          </Dialog>
+        </Portal>
+      }
+      <View style={styles.settings}>
+        <Text style={[styles.text]}>Limit</Text>
+        
+        <View style={styles.limitSection}>
+          <View style={[styles.button]} onTouchEnd={() => addToLimit(-1)}>
+            <Text style={[styles.buttonText]}>-</Text>
           </View>
 
-        </View>
+          <Text style={[styles.limit, styles.text]}>{currentProject?.limit}</Text>
 
-        <View style={styles.main}>
-          <TextInput 
-            style={styles.textArea} 
-            defaultValue="Add note here" 
-            placeholder="Add note here" 
-            multiline={true} 
-            value={note} 
-            numberOfLines={4} 
-            onChangeText={(value) => saveText(value)} />
-
-          <View style={styles.controls}>
-            <View style={[styles.button, styles.subtractControl]} onTouchEnd={subtractToCounter}>
-              <Text style={styles.buttonText}>-</Text>
-            </View>
-          </View>
-
-          <View style={styles.counterSection}>
-            <Text style={[styles.counter, styles.text]}>
-              {currentProject?.counter}
-            </Text>
-          </View>
-
-          <View style={styles.controls}>
-            <View 
-              style={[styles.button, styles.addControl]} 
-              onTouchEnd={addToCounter}>
-              <Text style={styles.buttonText}>+</Text>
-            </View>
+          <View style={[styles.button]} onTouchEnd={() => addToLimit(1)}>
+            <Text style={[styles.buttonText]}>+</Text>
           </View>
         </View>
+
+      </View>
+
+      <View style={styles.main}>
+        <TextInput 
+          style={styles.textArea} 
+          defaultValue="Add note here" 
+          placeholder="Add note here" 
+          multiline={true} 
+          value={note} 
+          numberOfLines={4} 
+          onChangeText={(value) => saveText(value)} />
+
+        <View style={styles.controls}>
+          <View style={[styles.button, styles.subtractControl]} onTouchEnd={subtractToCounter}>
+            <Text style={styles.buttonText}>-</Text>
+          </View>
+        </View>
+
+        <View style={styles.counterSection}>
+          <Text style={[styles.counter, styles.text]}>
+            {currentProject?.counter}
+          </Text>
+        </View>
+
+        <View style={styles.controls}>
+          <View 
+            style={[styles.button, styles.addControl]} 
+            onTouchEnd={(e) => addToCounter(1)}>
+            <Text style={styles.buttonText}>+</Text>
+          </View>
+        </View>
+      </View>
     </SafeAreaView>
   );
 };
@@ -251,7 +342,7 @@ const styles = StyleSheet.create({
     alignItems: "center"
   },
   textArea: {
-    color: "#000000",
+    color: "#000",
     width: 300,
     display: "flex",
     alignSelf: "center",
