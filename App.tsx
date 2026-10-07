@@ -153,7 +153,9 @@ const App = () => {
   }
 
   const saveCurrentProject = (project: Project, timeout: number = 0) => {
-    clearTimeout(noteTimeout);
+    if (timeout !=  null) {
+      clearTimeout(timeout);
+    }
     setTimeout(() => {
       const projectList: Project[] = [];
       projectList.push(project);
